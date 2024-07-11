@@ -2,7 +2,7 @@
 /*
    rocrail_CAN_GW
 
-    Pogramme permettant le pilotage de locomotives à partir de Rocrail©
+    Pogramme permettant le pilotage d'une centrale MS2 Marklin© à partir de Rocrail©, iTrain©, JMRI©...
     et la mise a jour de la liste des locomotives en MFX.
 
 
