@@ -70,8 +70,8 @@ void setup()
   //--- Start serial
   Serial.begin(500000); // Rocrail baudrate to ESP32 USB
   Serial.setTimeout(2);
-
   delay(100);
+  
   debug.begin(115200, SERIAL_8N1, RXD1, TXD1); // For debug
   delay(100);
 
