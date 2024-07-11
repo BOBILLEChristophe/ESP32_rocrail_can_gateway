@@ -8,9 +8,9 @@
 
 */
 
-#define PROJECT "rocrail_can_gateway"
-#define VERSION "0.2"
-#define AUTHOR "Christophe BOBILLE : christophe.bobille@gmail.com"
+#define PROJECT "rocrail_can/usb gateway"
+#define VERSION "0.4"
+#define AUTHOR "Christophe BOBILLE"
 
 //----------------------------------------------------------------------------------------
 //  Board Check
@@ -19,7 +19,6 @@
 #ifndef ARDUINO_ARCH_ESP32
 #error "Select an ESP32 board"
 #endif
-
 
 //----------------------------------------------------------------------------------------
 //   Include files
@@ -42,20 +41,24 @@
 
 static const uint32_t DESIRED_BIT_RATE = 250UL * 1000UL; // Marklin CAN baudrate = 250Kbit/s
 
+//----------------------------------------------------------------------------------------
+//  Buffers  : Rocrail always send 13 bytes
+//----------------------------------------------------------------------------------------
 
-// Buffers  : Rocrail always send 13 bytes
-char cBuffer[13]; // CAN buffer
+byte cBuffer[13]; // CAN buffer
 byte sBuffer[13]; // Serial buffer
+
+//----------------------------------------------------------------------------------------
+//  Marklin hash
+//----------------------------------------------------------------------------------------
 
 uint16_t RrHash; // for Rocrail hash
 
+//----------------------------------------------------------------------------------------
+//  Debug declaration
+//----------------------------------------------------------------------------------------
 
-//#include <WiFi.h>
-// WiFiClient localClient;
-// const char *ssid = "**********";
-// const char *password = "***********";
-// const uint port = 15731;
-// const char *ip = "192.168.1.13"; // tcpbin.com's ip
+void debugFrame(const CANMessage *);
 
 //----------------------------------------------------------------------------------------
 //   SETUP
@@ -67,12 +70,6 @@ void setup()
   //--- Start serial
   Serial.begin(500000); // Rocrail baudrate to ESP32 USB
   Serial.setTimeout(2);
-
-    while (!Serial)
-  {
-    debug.print(".");
-    delay(200);
-  }
 
   delay(100);
   debug.begin(115200, SERIAL_8N1, RXD1, TXD1); // For debug
@@ -88,7 +85,6 @@ void setup()
   debug.println("Start setup");
 
   //--- Configure ESP32 CAN
-
   debug.println("Configure ESP32 CAN");
   ACAN_ESP32_Settings settings(DESIRED_BIT_RATE);
   settings.mRxPin = GPIO_NUM_22; // Optional, default Tx pin is GPIO_NUM_4
@@ -103,7 +99,8 @@ void setup()
   else
     debug.println("Configuration CAN OK");
 
-  uint8_t rb = 0;
+  // --- listen for the Rocrail hash
+  int16_t rb = 0; //!\ Do not change type int16_t
   while (rb != 13)
   {
     if (Serial.available())
@@ -112,14 +109,13 @@ void setup()
 
   debug.println("");
 
-  // extract the Rocrail hash
+  // --- extract the Rocrail hash
   RrHash = ((cBuffer[2] << 8) | cBuffer[3]);
-  
+
   debug.printf("Rocrail hash : 0x");
   debug.println(RrHash, HEX);
 
   // --- register Rocrail on the CAN bus
-  
   CANMessage frame;
   frame.id = (cBuffer[0] << 24) | (cBuffer[1] << 16) | RrHash;
   frame.ext = true;
@@ -128,14 +124,8 @@ void setup()
     frame.data[i] = cBuffer[i + 5];
   const uint32_t ok = ACAN_ESP32::can.tryToSend(frame);
 
-  debug.printf("frame.id : %d\n", frame.id);
-  debug.print("frame.id hex : ");
-  debug.print(frame.id, HEX);
-  debug.print("len : ");
-  debug.print(frame.len);
-}
-
-
+  debugFrame(&frame);
+} // end setup
 
 //----------------------------------------------------------------------------------------
 //   LOOP
@@ -147,13 +137,11 @@ void loop()
   CANMessage frameIn;
   if (ACAN_ESP32::can.receive(frameIn))
   {
-    // clear sBuffer
+    // clear can sBuffer
     for (byte el : sBuffer)
       el = 0;
 
     debug.printf("Reception CAN -> envoi Serial\n");
-    debug.print("frame.id = 0x");
-    debug.println(frameIn.id);
 
     sBuffer[0] = (frameIn.id & 0xFF000000) >> 24;
     sBuffer[1] = (frameIn.id & 0xFF0000) >> 16;
@@ -162,21 +150,20 @@ void loop()
     sBuffer[4] = frameIn.len;
     for (byte i = 0; i < frameIn.len; i++)
       sBuffer[i + 5] = frameIn.data[i];
-      
+
     Serial.write(sBuffer, 13);
   }
 
-  // clear cBuffer
-  for (byte el : cBuffer)
-    el = 0;
-
-
   if (Serial.available())
   {
+    // clear serial cBuffer
+    for (byte el : cBuffer)
+      el = 0;
+
     debug.printf("Reception Serial -> envoi CAN\n");
+
     if (Serial.readBytes(cBuffer, 13) == 13)
     {
-      debug.printf("Reception Serial ok\n");
       CANMessage frameOut;
       frameOut.id = (cBuffer[0] << 24) | (cBuffer[1] << 16) | RrHash;
       frameOut.ext = true;
@@ -186,6 +173,30 @@ void loop()
       const bool ok = ACAN_ESP32::can.tryToSend(frameOut);
     }
   }
+} // end loop
+
+//----------------------------------------------------------------------------------------
+//   DEBUG
+//----------------------------------------------------------------------------------------
+
+void debugFrame(const CANMessage *frame)
+{
+  debug.print("Hash : 0x");
+  debug.println(frame->id & 0xFFFF, HEX);
+  debug.print("Response : ");
+  debug.println((frame->id & 0x10000) >> 16 ? "true" : "false");
+  debug.print("Commande : 0x");
+  debug.println((frame->id & 0x1FE0000) >> 17, HEX);
+  for (byte i = 0; i < frame->len; i++)
+  {
+    debug.printf("data[%d] = 0x", i);
+    debug.print(frame->data[i], HEX);
+    if (i < frame->len - 2)
+      debug.print(" - ");
+  }
+  debug.println("");
+  debug.println("-----------------------------------------------------------------------------------------------------------------------------");
+  debug.println("");
 }
 
 //----------------------------------------------------------------------------------------
