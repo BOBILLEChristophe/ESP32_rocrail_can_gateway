@@ -5,6 +5,7 @@
     Pogramme permettant le pilotage d'une centrale MS2 Marklin© à partir de Rocrail©, iTrain©, JMRI©...
     et la mise a jour de la liste des locomotives en MFX.
 
+    Utilisation du port série à 500 000Kb/s
 
 */
 
